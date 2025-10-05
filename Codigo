@@ -1,1 +1,200 @@
 
+# Archivo: Algoritmo_cifrado_descifrado.py
+# Proyecto: EncDec 
+# Autor: Grupo 1
+
+# Descripción:
+#   Programa en Python que implementa el cifrado Hill (matriz 2x2 "Temporal")
+#   mediante una interfaz gráfica simple desarrollada en Tkinter.
+#   Convierte texto en números (A=0...Z=25), organiza en bloques
+#   y aplica el producto matricial módulo 26 para cifrar el mensaje.
+
+# Notas:
+#   - El programa solo realiza cifrado (no descifrado).
+#   - Si la matriz clave no es invertible módulo 26, el sistema muestra una advertencia. El cifrado aún se ejecuta.
+#   - Rellena con 'X' (valor 23) si el mensaje no completa bloques de 2.
+
+import tkinter as tk
+from tkinter import messagebox
+from tkinter.scrolledtext import ScrolledText
+import numpy as np
+
+#  Utilidades y definiciones
+
+alfabeto = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+mapa_letras = {letra: i for i, letra in enumerate(alfabeto)}
+mapa_numeros = {i: letra for i, letra in enumerate(alfabeto)}
+
+def texto_a_numeros(texto):
+    """
+    Convierte un texto en una lista de números según el alfabeto.
+    Solo toma letras A-Z y convierte todo a mayúsculas.
+    """
+    texto = texto.upper()
+    return [mapa_letras[ch] for ch in texto if ch in mapa_letras]
+
+def numeros_a_texto(numeros):
+    """
+    Convierte una lista de números a letras.
+    Aplica módulo 26 para garantizar resultados válidos.
+    """
+    return ''.join(mapa_numeros[int(n) % 26] for n in numeros)
+
+def crear_bloques(numeros, n):
+    """
+    Divide una lista de números en bloques de tamaño n.
+    Rellena con 'X' (valor 23) si el bloque es incompleto.
+    """
+    nums = numeros.copy()
+    while len(nums) % n != 0:
+        nums.append(mapa_letras['X'])
+    return [nums[i:i+n] for i in range(0, len(nums), n)]
+
+def gcd(a, b):
+    """Calcula el máximo común divisor (valor absoluto)."""
+    a, b = abs(a), abs(b)
+    while b:
+        a, b = b, a % b
+    return a
+
+def determinante_2x2(K):
+    """Calcula el determinante entero de una matriz 2x2."""
+    a, b = int(K[0,0]), int(K[0,1])
+    c, d = int(K[1,0]), int(K[1,1])
+    return a*d - b*c
+
+#  Función principal de cifrado
+
+def cifrar_mensaje(texto, K):
+    """
+    Cifra un texto usando el método Hill con matriz clave K (2x2).
+    Devuelve una tupla donde:
+      - texto_cifrado: texto final cifrado
+      - pasos: descripción detallada del proceso
+    """
+    pasos = []
+    nums = texto_a_numeros(texto)
+    pasos.append(f"Texto normalizado: {''.join([c for c in texto.upper() if c in alfabeto])}")
+    pasos.append(f"Números (A=0...Z=25): {nums}")
+
+    n = K.shape[0]
+    bloques = crear_bloques(nums, n)
+    pasos.append(f"Bloques de tamaño {n}: {bloques}")
+
+    resultado_nums = []
+    pasos.append("Multiplicación K x bloque (mod 26):")
+    for i, bloque in enumerate(bloques, start=1):
+        vector = np.array(bloque).reshape(n,1)
+        prod = np.dot(K, vector) % 26
+        prod_list = [int(x) for x in prod.flatten()]
+        resultado_nums.extend(prod_list)
+        pasos.append(f"  Bloque {i}: {bloque} → {prod_list}")
+
+    texto_cifrado = numeros_a_texto(resultado_nums)
+    pasos.append(f"Texto cifrado final: {texto_cifrado}")
+
+    return texto_cifrado, "\n".join(pasos)
+
+#  Interfaz gráfica (Tkinter)
+
+def leer_matriz_2x2(e11, e12, e21, e22):
+    """Lee los valores ingresados y forma una matriz 2x2."""
+    try:
+        a = int(e11.get().strip()); b = int(e12.get().strip())
+        c = int(e21.get().strip()); d = int(e22.get().strip())
+    except ValueError:
+        raise ValueError("Los valores de la matriz deben ser números enteros.")
+    return np.array([[a, b], [c, d]], dtype=int)
+
+def on_cifrar():
+    """Ejecuta el cifrado al presionar el botón 'Cifrar'."""
+    texto = entrada_texto.get("1.0", tk.END).strip()
+    if not texto:
+        messagebox.showwarning("Falta texto", "Por favor escribe el texto a cifrar.")
+        return
+
+    try:
+        K = leer_matriz_2x2(entry_k11, entry_k12, entry_k21, entry_k22)
+    except ValueError as e:
+        messagebox.showerror("Error en matriz", str(e))
+        return
+
+    det = determinante_2x2(K)
+    det_mod26 = det % 26
+    g = gcd(det_mod26, 26)
+    label_status.config(text=f"Determinante = {det} (mod 26 = {det_mod26}), MCD = {g}")
+    label_status.config(fg="green" if g == 1 else "red")
+
+    if g != 1:
+        messagebox.showwarning(
+            "Clave no invertible",
+            "El determinante de la matriz no es coprimo con 26.\n"
+            "Esto significa que no sería posible descifrar el mensaje.\n"
+            "Puedes continuar para observar el cifrado."
+        )
+
+    texto_cifrado, pasos = cifrar_mensaje(texto, K)
+
+    salida.config(state=tk.NORMAL)
+    salida.delete("1.0", tk.END)
+    salida.insert(tk.END, f"Texto original: {texto}\n")
+    salida.insert(tk.END, f"Matriz clave:\n{K.tolist()}\n\n")
+    salida.insert(tk.END, f"Texto cifrado: {texto_cifrado}\n\n")
+    salida.insert(tk.END, "=== Detalle del proceso ===\n")
+    salida.insert(tk.END, pasos)
+    salida.config(state=tk.DISABLED)
+
+def on_limpiar():
+    """Limpia los campos de texto y reinicia la interfaz."""
+    entrada_texto.delete("1.0", tk.END)
+    for e in (entry_k11, entry_k12, entry_k21, entry_k22):
+        e.delete(0, tk.END)
+    entry_k11.insert(0, "3"); entry_k12.insert(0, "3")
+    entry_k21.insert(0, "2"); entry_k22.insert(0, "5")
+    salida.config(state=tk.NORMAL)
+    salida.delete("1.0", tk.END)
+    salida.config(state=tk.DISABLED)
+    label_status.config(text="", fg="black")
+
+#  Construcción de la ventana
+
+root = tk.Tk()
+root.title("EncDec - Matriz 2x2")
+root.geometry("820x520")
+
+frame_left = tk.Frame(root, padx=10, pady=10)
+frame_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+tk.Label(frame_left, text="Mensaje a cifrar:").pack(anchor="w")
+entrada_texto = tk.Text(frame_left, height=6, wrap=tk.WORD)
+entrada_texto.pack(fill=tk.X, pady=(0,10))
+
+frame_right = tk.Frame(root, padx=10, pady=10)
+frame_right.pack(side=tk.RIGHT, fill=tk.Y)
+
+tk.Label(frame_right, text="Matriz clave 2x2:").grid(row=0, column=0, columnspan=2, sticky="w")
+
+entries = []
+for i, label in enumerate(["a:", "b:", "c:", "d:"]):
+    tk.Label(frame_right, text=label).grid(row=i+1, column=0, sticky="e")
+    e = tk.Entry(frame_right, width=6); e.grid(row=i+1, column=1, sticky="w")
+    entries.append(e)
+
+entry_k11, entry_k12, entry_k21, entry_k22 = entries
+entry_k11.insert(0, "3"); entry_k12.insert(0, "3")
+entry_k21.insert(0, "2"); entry_k22.insert(0, "5")
+
+tk.Button(frame_right, text="Cifrar", width=12, command=on_cifrar).grid(row=5, column=0, columnspan=2, pady=5)
+tk.Button(frame_right, text="Limpiar", width=12, command=on_limpiar).grid(row=6, column=0, columnspan=2)
+
+label_status = tk.Label(frame_right, text="", wraplength=220, justify="left")
+label_status.grid(row=7, column=0, columnspan=2, pady=(10,0))
+
+frame_bottom = tk.Frame(root, padx=10, pady=10)
+frame_bottom.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
+
+tk.Label(frame_bottom, text="Salida (resultado y pasos):").pack(anchor="w")
+salida = ScrolledText(frame_bottom, height=14, state=tk.DISABLED)
+salida.pack(fill=tk.BOTH, expand=True)
+
+root.mainloop()
